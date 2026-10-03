@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -43,6 +44,12 @@ const (
 	defaultChangelogFile = "changelog.yaml"
 	defaultStaleAfter    = 30 * time.Minute
 	tokenFile            = "/var/run/secrets/kubernetes.io/serviceaccount/token" //nolint:gosec // a path, not a credential.
+)
+
+var (
+	hostPattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$`)
+	portPattern = regexp.MustCompile(`^[0-9]{1,5}$`)
+	namePattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
 )
 
 // World is everything outside the process the command line touches.
@@ -178,6 +185,16 @@ func base(w World, alsoRequired ...string) (runner.Runner, error) {
 	}
 	if len(missing) > 0 {
 		return runner.Runner{}, fmt.Errorf("not set: %s", strings.Join(missing, ", "))
+	}
+
+	// Liquibase reads these three inside a JDBC URL, where a `?` or a `/` would start another
+	// parameter or another host than the one the runner itself connects to.
+	for name, shape := range map[string]*regexp.Regexp{
+		"DATABASE_HOST": hostPattern, "DATABASE_PORT": portPattern, "DATABASE_NAME": namePattern,
+	} {
+		if !shape.MatchString(w.Getenv(name)) {
+			return runner.Runner{}, fmt.Errorf("%s %q is not one this runner connects to", name, w.Getenv(name))
+		}
 	}
 
 	staleAfter := defaultStaleAfter

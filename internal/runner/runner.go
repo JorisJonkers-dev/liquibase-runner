@@ -109,7 +109,8 @@ func (r Runner) NonTransactional(ctx context.Context) (bool, error) {
 			return err
 		}
 		for _, c := range sets {
-			if ran(c) {
+			// A changeset Liquibase runs again is part of every release, held or not.
+			if ran(c) && !c.Reruns {
 				continue
 			}
 			release++

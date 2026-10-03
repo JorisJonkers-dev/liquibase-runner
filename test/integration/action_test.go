@@ -91,6 +91,18 @@ applications:
 		}
 	})
 
+	t.Run("an image that answers the check with anything but true or false writes no proof", func(t *testing.T) {
+		mustDocker(t, "pull", "-q", "alpine:3.22")
+		refused := filepath.Join(t.TempDir(), "migration-proof.yml")
+		out, err := action(t, "IMAGE=alpine:3.22", "PROOF_FILE="+refused)
+		if err == nil {
+			t.Fatalf("an image that is no runner was given a proof:\n%s", out)
+		}
+		if _, err := os.Stat(refused); !os.IsNotExist(err) {
+			t.Fatalf("a proof was written: %v", err)
+		}
+	})
+
 	t.Run("a serving image needs its revision and its suite", func(t *testing.T) {
 		for _, env := range [][]string{
 			{"SERVING_IMAGE=" + image + "-v2", "TEST_COMMAND=true"},

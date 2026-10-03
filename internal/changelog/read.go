@@ -18,22 +18,21 @@ type ChangeSet struct {
 	Author           string
 	File             string
 	NonTransactional bool
+	// Reruns is set for a changeset Liquibase runs again although the database holds it:
+	// one marked runAlways or runOnChange is part of every release.
+	Reruns bool
 }
 
 // ErrNotYAML is returned for a changelog the checks cannot read. The estate has one migration
 // format, so a changelog in another one is refused instead of being passed unchecked.
 var ErrNotYAML = errors.New("not a YAML changelog")
 
-type document struct {
-	LogicalFilePath string  `yaml:"logicalFilePath"`
-	Entries         []entry `yaml:"databaseChangeLog"`
-}
+// ErrAmbiguous is returned for a changelog this reader and Liquibase could read differently.
+// The checks answer for what Liquibase will run, so anything they cannot model is refused.
+var ErrAmbiguous = errors.New("the changelog cannot be checked")
 
-type entry struct {
-	LogicalFilePath *string     `yaml:"logicalFilePath"`
-	ChangeSet       *changeSet  `yaml:"changeSet"`
-	Include         *include    `yaml:"include"`
-	IncludeAll      *includeAll `yaml:"includeAll"`
+type document struct {
+	Entries []yaml.Node `yaml:"databaseChangeLog"`
 }
 
 type changeSet struct {
@@ -41,6 +40,8 @@ type changeSet struct {
 	Author           yaml.Node `yaml:"author"`
 	LogicalFilePath  string    `yaml:"logicalFilePath"`
 	RunInTransaction *bool     `yaml:"runInTransaction"`
+	RunAlways        bool      `yaml:"runAlways"`
+	RunOnChange      bool      `yaml:"runOnChange"`
 }
 
 type include struct {
@@ -52,6 +53,14 @@ type includeAll struct {
 	Path     string `yaml:"path"`
 	Relative bool   `yaml:"relativeToChangelogFile"`
 }
+
+// The keys this reader acts on. A key that differs from one of them only by case is refused:
+// whether Liquibase honours it is not something the checks may guess.
+var (
+	entryKeys     = []string{"changeSet", "include", "includeAll", "logicalFilePath"}                           //nolint:gochecknoglobals // a constant list.
+	changeSetKeys = []string{"id", "author", "logicalFilePath", "runInTransaction", "runAlways", "runOnChange"} //nolint:gochecknoglobals // a constant list.
+	includeKeys   = []string{"file", "path", "relativeToChangelogFile"}                                         //nolint:gochecknoglobals // a constant list.
+)
 
 // Read returns every changeset of the changelog at file, in the order Liquibase runs them,
 // following include and includeAll.
@@ -78,47 +87,102 @@ func read(root fs.FS, file string, seen map[string]bool) ([]ChangeSet, error) {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
 
-	logical := file
-	var sets []ChangeSet
-	for _, e := range doc.Entries {
-		switch {
-		case e.LogicalFilePath != nil:
-			logical = *e.LogicalFilePath
-		case e.ChangeSet != nil:
-			sets = append(sets, e.ChangeSet.at(logical))
-		case e.Include != nil:
-			more, err := read(root, resolve(file, e.Include.File, e.Include.Relative), seen)
-			if err != nil {
-				return nil, err
-			}
-			sets = append(sets, more...)
-		case e.IncludeAll != nil:
-			more, err := readAll(root, resolve(file, e.IncludeAll.Path, e.IncludeAll.Relative), seen)
-			if err != nil {
-				return nil, err
-			}
-			sets = append(sets, more...)
+	r := reader{root: root, file: file, logical: file, seen: seen}
+	for i := range doc.Entries {
+		if err := r.entry(&doc.Entries[i]); err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
 		}
 	}
-	return sets, nil
+	return r.sets, nil
 }
 
-func (c *changeSet) at(file string) ChangeSet {
+// reader walks one changelog file.
+type reader struct {
+	root    fs.FS
+	file    string
+	logical string
+	seen    map[string]bool
+	sets    []ChangeSet
+}
+
+// entry reads one item of databaseChangeLog: every key of it, in order, not only the first.
+func (r *reader) entry(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("%w: line %d is not a mapping", ErrAmbiguous, node.Line)
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		key, value := node.Content[i], node.Content[i+1]
+		if err := exact(key, entryKeys); err != nil {
+			return err
+		}
+		var err error
+		switch key.Value {
+		case "logicalFilePath":
+			r.logical = value.Value
+		case "changeSet":
+			err = r.changeSet(value)
+		case "include":
+			err = r.include(value)
+		case "includeAll":
+			err = r.includeAll(value)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *reader) changeSet(node *yaml.Node) error {
+	if err := exactKeys(node, changeSetKeys); err != nil {
+		return err
+	}
+	var c changeSet
+	if err := node.Decode(&c); err != nil {
+		return err
+	}
+	file := r.logical
 	if c.LogicalFilePath != "" {
 		file = c.LogicalFilePath
 	}
-	return ChangeSet{
+	r.sets = append(r.sets, ChangeSet{
 		ID:               c.ID.Value,
 		Author:           c.Author.Value,
 		File:             file,
 		NonTransactional: c.RunInTransaction != nil && !*c.RunInTransaction,
-	}
+		Reruns:           c.RunAlways || c.RunOnChange,
+	})
+	return nil
 }
 
-// readAll follows includeAll: every file under dir, in path order, which is Liquibase's order.
-func readAll(root fs.FS, dir string, seen map[string]bool) ([]ChangeSet, error) {
+func (r *reader) include(node *yaml.Node) error {
+	if err := exactKeys(node, includeKeys); err != nil {
+		return err
+	}
+	var inc include
+	if err := node.Decode(&inc); err != nil {
+		return err
+	}
+	more, err := read(r.root, resolve(r.file, inc.File, inc.Relative), r.seen)
+	r.sets = append(r.sets, more...)
+	return err
+}
+
+// includeAll follows every file under the directory, in path order, which is Liquibase's
+// order. A filter Liquibase applies is not modelled, so the check counts at least the
+// changesets Liquibase runs.
+func (r *reader) includeAll(node *yaml.Node) error {
+	if err := exactKeys(node, includeKeys); err != nil {
+		return err
+	}
+	var inc includeAll
+	if err := node.Decode(&inc); err != nil {
+		return err
+	}
+	dir := resolve(r.file, inc.Path, inc.Relative)
+
 	var files []string
-	err := fs.WalkDir(root, dir, func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(r.root, dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -128,19 +192,40 @@ func readAll(root fs.FS, dir string, seen map[string]bool) ([]ChangeSet, error) 
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("read changelog directory: %w", err)
+		return fmt.Errorf("read changelog directory: %w", err)
 	}
 	sort.Strings(files)
 
-	var sets []ChangeSet
 	for _, f := range files {
-		more, err := read(root, f, seen)
+		more, err := read(r.root, f, r.seen)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		sets = append(sets, more...)
+		r.sets = append(r.sets, more...)
 	}
-	return sets, nil
+	return nil
+}
+
+// exactKeys refuses a mapping that spells one of the known keys in another case.
+func exactKeys(node *yaml.Node, known []string) error {
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("%w: line %d is not a mapping", ErrAmbiguous, node.Line)
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if err := exact(node.Content[i], known); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func exact(key *yaml.Node, known []string) error {
+	for _, k := range known {
+		if key.Value != k && strings.EqualFold(key.Value, k) {
+			return fmt.Errorf("%w: line %d spells %q as %q", ErrAmbiguous, key.Line, k, key.Value)
+		}
+	}
+	return nil
 }
 
 func resolve(from, target string, relative bool) string {

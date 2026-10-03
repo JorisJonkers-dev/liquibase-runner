@@ -256,6 +256,25 @@ func TestNonTransactional(t *testing.T) {
 	}
 }
 
+func TestAChangesetThatRunsAgainIsPartOfEveryRelease(t *testing.T) {
+	const rerun = `databaseChangeLog:
+  - changeSet: {id: 1, author: a, runInTransaction: false, runAlways: true}
+  - changeSet: {id: 2, author: a}
+  - changeSet: {id: 3, author: a}
+`
+	f := newFixture(t, rerun)
+	f.db.ran = map[string]bool{"1": true, "2": true}
+	if _, err := f.NonTransactional(context.Background()); !errors.Is(err, runner.ErrNonTransactionalNotAlone) {
+		t.Fatalf("error %v: a non-transactional changeset that runs again shared a release and passed", err)
+	}
+
+	f.db.ran["3"] = true
+	alone, err := f.NonTransactional(context.Background())
+	if err != nil || !alone {
+		t.Fatalf("nonTransactional %v, error %v, for a release that is only the changeset that runs again", alone, err)
+	}
+}
+
 func TestEveryFailureIsReturned(t *testing.T) {
 	boom := errors.New("boom")
 	cases := map[string]struct {

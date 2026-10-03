@@ -127,3 +127,62 @@ func TestReadRefusesWhatItCannotCheck(t *testing.T) {
 		t.Fatalf("error %v, want ErrNotYAML", err)
 	}
 }
+
+func TestReadReadsEveryKeyOfAnEntryAndMarksWhatRunsAgain(t *testing.T) {
+	root := fstest.MapFS{
+		"changelog.yaml": {Data: []byte(`
+databaseChangeLog:
+  - logicalFilePath: legacy.yaml
+    changeSet: {id: 1, author: a, runInTransaction: false, runAlways: true}
+    include: {file: more.yaml}
+  - changeSet: {id: 3, author: a, runOnChange: true}
+`)},
+		"more.yaml": {Data: []byte("databaseChangeLog:\n  - changeSet: {id: 2, author: a}\n")},
+	}
+	got, err := changelog.Read(root, "changelog.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []changelog.ChangeSet{
+		{ID: "1", Author: "a", File: "legacy.yaml", NonTransactional: true, Reruns: true},
+		{ID: "2", Author: "a", File: "more.yaml"},
+		{ID: "3", Author: "a", File: "legacy.yaml", Reruns: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("changesets:\n%+v\nwant:\n%+v", got, want)
+	}
+}
+
+func TestReadRefusesAChangelogLiquibaseCouldReadDifferently(t *testing.T) {
+	cases := map[string]string{
+		"a changeset key in another case":     "databaseChangeLog:\n  - ChangeSet: {id: 1, author: a}\n",
+		"runInTransaction in another case":    "databaseChangeLog:\n  - changeSet: {id: 1, author: a, runintransaction: false}\n",
+		"runAlways in another case":           "databaseChangeLog:\n  - changeSet: {id: 1, author: a, RunAlways: true}\n",
+		"an include key in another case":      "databaseChangeLog:\n  - include: {File: more.yaml}\n",
+		"an includeAll key in another case":   "databaseChangeLog:\n  - includeAll: {Path: more}\n",
+		"an entry that is not a mapping":      "databaseChangeLog:\n  - changeSet\n",
+		"a changeset that is not a mapping":   "databaseChangeLog:\n  - changeSet: one\n",
+		"an include that is not a mapping":    "databaseChangeLog:\n  - include: more.yaml\n",
+		"an includeAll that is not a mapping": "databaseChangeLog:\n  - includeAll: more\n",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := changelog.Read(fstest.MapFS{"changelog.yaml": {Data: []byte(body)}}, "changelog.yaml")
+			if !errors.Is(err, changelog.ErrAmbiguous) {
+				t.Fatalf("error %v, want ErrAmbiguous", err)
+			}
+		})
+	}
+
+	for name, body := range map[string]string{
+		"runInTransaction that is not a boolean":   "databaseChangeLog:\n  - changeSet: {id: 1, author: a, runInTransaction: \"${tx}\"}\n",
+		"an include flag that is not a boolean":    "databaseChangeLog:\n  - include: {file: more.yaml, relativeToChangelogFile: maybe}\n",
+		"an includeAll flag that is not a boolean": "databaseChangeLog:\n  - includeAll: {path: more, relativeToChangelogFile: maybe}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := changelog.Read(fstest.MapFS{"changelog.yaml": {Data: []byte(body)}}, "changelog.yaml"); err == nil {
+				t.Fatal("the changelog was read")
+			}
+		})
+	}
+}

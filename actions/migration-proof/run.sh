@@ -66,6 +66,10 @@ fi
 
 echo "::group::A non-transactional changeset stands alone"
 non_transactional="$(runner "$IMAGE" ci non-transactional </dev/null)"
+case "$non_transactional" in
+  true | false) ;;
+  *) fail "the image answered the non-transactional check with something that is neither true nor false" ;;
+esac
 echo "nonTransactional: $non_transactional"
 echo "::endgroup::"
 

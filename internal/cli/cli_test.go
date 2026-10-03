@@ -201,6 +201,21 @@ func TestAFailedRunExitsOneAndSaysWhy(t *testing.T) {
 			func(w *world) { w.env["VAULT_CREDENTIALS_PATH"] = "database/creds/other" },
 			"vault read database/creds/other",
 		},
+		"a database name that would add a JDBC parameter": {
+			[]string{"up", tag},
+			func(w *world) { w.env["DATABASE_NAME"] = "notes_db?socketFactory=x" },
+			`DATABASE_NAME "notes_db?socketFactory=x" is not one this runner connects to`,
+		},
+		"a host that would name another server": {
+			[]string{"up", tag},
+			func(w *world) { w.env["DATABASE_HOST"] = "db/x?" },
+			`DATABASE_HOST "db/x?" is not one this runner connects to`,
+		},
+		"a port that is not a number": {
+			[]string{"up", tag},
+			func(w *world) { w.env["DATABASE_PORT"] = "5432/other" },
+			`DATABASE_PORT "5432/other" is not one this runner connects to`,
+		},
 		"a lock bound that is not a duration": {
 			[]string{"up", tag},
 			func(w *world) { w.env["LOCK_STALE_AFTER"] = "soon" },
