@@ -1,0 +1,68 @@
+# One command per loop. `task` lists targets; `task check` is what CI runs.
+version: "3"
+
+vars:
+  APP: runner
+  COVERAGE_MIN: 80
+
+tasks:
+  default:
+    cmd: task --list
+    silent: true
+
+  fmt:
+    desc: Fail if any file is not gofumpt/goimports formatted
+    cmd: golangci-lint fmt --diff ./...
+
+  lint:
+    desc: All linters
+    cmds:
+      - task: fmt
+      - task: lint:go
+      - task: lint:actions
+
+  lint:go:
+    desc: golangci-lint, over the integration tests too
+    cmd: golangci-lint run --build-tags integration ./...
+
+  lint:actions:
+    desc: actionlint on every workflow
+    cmd: actionlint
+
+  test:
+    desc: Go tests with the race detector and a {{.COVERAGE_MIN}}% statement coverage gate
+    cmds:
+      - go test -race -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+      - |
+        total="$(go tool cover -func=coverage.out | awk '/^total:/ { sub("%", "", $3); print $3 }')"
+        echo "coverage: ${total}% (minimum {{.COVERAGE_MIN}}%)"
+        awk -v t="$total" -v m="{{.COVERAGE_MIN}}" 'BEGIN { exit !(t >= m) }'
+
+  test:integration:
+    desc: Build the image and run up, tag and down against a real Postgres (needs Docker)
+    cmd: go test -tags integration -count=1 -timeout 15m ./test/integration/...
+
+  build:
+    desc: Build the runner binary
+    env:
+      CGO_ENABLED: "0"
+    cmd: go build -trimpath -o bin/{{.APP}} ./cmd/{{.APP}}
+
+  secrets:
+    desc: Scan the working tree for secrets
+    cmd: gitleaks dir --no-banner --redact .
+
+  check:
+    desc: Everything CI runs on a pull request
+    cmds:
+      - task: lint
+      - task: test
+      - task: build
+      - task: secrets
+      - task: test:integration
+
+  fix:
+    desc: Apply formatters and autofixes
+    cmds:
+      - golangci-lint fmt ./...
+      - golangci-lint run --build-tags integration --fix ./...

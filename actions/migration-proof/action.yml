@@ -1,0 +1,64 @@
+# The three migration-safety obligations an application's CI owes before it publishes a
+# fragment (deploy-kit, spec/v1/55-delivery.md#migration-safety), and the Migration Proof that
+# records them. Run it after building the migration image, before publishing the fragment.
+name: Migration Proof
+description: Prove a changelog safe against the serving revision, and write the Migration Proof.
+
+inputs:
+  image:
+    description: The migration image under test, built FROM the platform's runner.
+    required: true
+  application:
+    description: The id of the Application whose schema the changelog moves.
+    required: true
+  database-name:
+    description: The project database's name, `<project>_db`.
+    required: true
+  proof-file:
+    description: The Migration Proof beside the project file. Created, or its entry for this Application replaced.
+    required: true
+  serving-image:
+    description: The serving revision's migration image. Leave empty on a first release, when nothing serves.
+    required: false
+    default: ""
+  tested-against:
+    description: The serving revision, `sha256:...`, from the projection published back. Required with serving-image.
+    required: false
+    default: ""
+  test-command:
+    description: >-
+      Runs the serving revision's own test suite against the database the new changelog has just
+      migrated. It finds the database in DATABASE_HOST, DATABASE_PORT, DATABASE_NAME,
+      DATABASE_USERNAME and DATABASE_PASSWORD. Required with serving-image.
+    required: false
+    default: ""
+  working-directory:
+    description: Where test-command runs, the checkout of the serving revision.
+    required: false
+    default: "."
+  postgres-image:
+    description: The Postgres the checks run against.
+    required: false
+    default: postgres:17-alpine
+
+outputs:
+  non-transactional:
+    description: Whether the release is one non-transactional changeset.
+    value: ${{ steps.prove.outputs.non-transactional }}
+
+runs:
+  using: composite
+  steps:
+    - id: prove
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        APPLICATION: ${{ inputs.application }}
+        DATABASE_NAME: ${{ inputs.database-name }}
+        PROOF_FILE: ${{ inputs.proof-file }}
+        SERVING_IMAGE: ${{ inputs.serving-image }}
+        TESTED_AGAINST: ${{ inputs.tested-against }}
+        TEST_COMMAND: ${{ inputs.test-command }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        POSTGRES_IMAGE: ${{ inputs.postgres-image }}
+      run: '"${GITHUB_ACTION_PATH}/run.sh"'

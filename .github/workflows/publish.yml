@@ -1,0 +1,27 @@
+# Tag -> image. release.yml pushes a vX.Y.Z tag through the App token; that push builds the
+# multi-arch runner image and pushes it to GHCR, where the images lock resolves it to a digest.
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish (vX.Y.Z)
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  publish-image:
+    uses: JorisJonkers-dev/github-workflows/.github/workflows/container-publish.yml@1efce81af819868fb2f5fd99ee7b04a1275845d8 # v0.18.0
+    with:
+      image-name: liquibase-runner
+      version: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      platforms: linux/amd64,linux/arm64
+    permissions:
+      contents: read
+      packages: write

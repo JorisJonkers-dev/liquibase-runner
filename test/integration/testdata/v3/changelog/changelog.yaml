@@ -1,0 +1,27 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-notes
+      author: test
+      changes:
+        - createTable:
+            tableName: notes
+            columns:
+              - column: {name: id, type: bigint}
+  - changeSet:
+      id: add-body
+      author: test
+      changes:
+        - addColumn:
+            tableName: notes
+            columns:
+              - column: {name: body, type: text}
+  - changeSet:
+      id: index-body
+      author: test
+      runInTransaction: false
+      changes:
+        - sql:
+            sql: CREATE INDEX CONCURRENTLY notes_body ON notes (body)
+      rollback:
+        - sql:
+            sql: DROP INDEX CONCURRENTLY notes_body
