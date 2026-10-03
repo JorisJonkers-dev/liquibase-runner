@@ -219,11 +219,15 @@ func exactKeys(node *yaml.Node, known []string) error {
 	return nil
 }
 
-// plain refuses one key of a mapping the reader acts on when it is a merge key, when it spells
-// a known key in another case, or when a known key's value is an alias. Liquibase's parser
+// plain refuses one key of a mapping the reader acts on when it is an alias or a merge key, when
+// it spells a known key in another case, or when a known key's value is an alias. Liquibase's parser
 // resolves merges and aliases before Liquibase sees the mapping; this reader walks what is
 // written, so a changeset or a runInTransaction brought in by either would go unseen.
 func plain(key, value *yaml.Node, known []string) error {
+	// An alias used as a key carries the anchor's name here, not the key Liquibase will see.
+	if key.Kind != yaml.ScalarNode {
+		return fmt.Errorf("%w: line %d has a key that is not written out", ErrAmbiguous, key.Line)
+	}
 	if key.Tag == "!!merge" || key.Value == "<<" {
 		return fmt.Errorf("%w: line %d merges another mapping in", ErrAmbiguous, key.Line)
 	}
