@@ -1,0 +1,17 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-notes
+      author: test
+      changes:
+        - createTable:
+            tableName: notes
+            columns:
+              - column: {name: id, type: bigint}
+  - changeSet:
+      id: add-body
+      author: test
+      changes:
+        - addColumn:
+            tableName: notes
+            columns:
+              - column: {name: body, type: text}

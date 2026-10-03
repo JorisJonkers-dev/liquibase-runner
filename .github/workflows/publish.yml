@@ -1,0 +1,26 @@
+# Tag -> image. release.yml pushes a vX.Y.Z tag through the App token; that push builds the
+# multi-arch runner image and pushes it to GHCR, where the images lock resolves it to a digest.
+#
+# A manual run republishes a tag, and only a tag: it is dispatched on the tag itself, so the
+# code that is built is the code the version names. A run on a branch does nothing.
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  publish-image:
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: JorisJonkers-dev/github-workflows/.github/workflows/container-publish.yml@1efce81af819868fb2f5fd99ee7b04a1275845d8 # v0.18.0
+    with:
+      image-name: liquibase-runner
+      version: ${{ github.ref_name }}
+      platforms: linux/amd64,linux/arm64
+    permissions:
+      contents: read
+      packages: write
