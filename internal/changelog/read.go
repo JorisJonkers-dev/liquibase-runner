@@ -112,7 +112,7 @@ func (r *reader) entry(node *yaml.Node) error {
 	}
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		key, value := node.Content[i], node.Content[i+1]
-		if err := exact(key, entryKeys); err != nil {
+		if err := plain(key, value, entryKeys); err != nil {
 			return err
 		}
 		var err error
@@ -206,23 +206,33 @@ func (r *reader) includeAll(node *yaml.Node) error {
 	return nil
 }
 
-// exactKeys refuses a mapping that spells one of the known keys in another case.
+// exactKeys refuses a mapping the reader and Liquibase could read differently.
 func exactKeys(node *yaml.Node, known []string) error {
 	if node.Kind != yaml.MappingNode {
 		return fmt.Errorf("%w: line %d is not a mapping", ErrAmbiguous, node.Line)
 	}
 	for i := 0; i+1 < len(node.Content); i += 2 {
-		if err := exact(node.Content[i], known); err != nil {
+		if err := plain(node.Content[i], node.Content[i+1], known); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func exact(key *yaml.Node, known []string) error {
+// plain refuses one key of a mapping the reader acts on when it is a merge key, when it spells
+// a known key in another case, or when a known key's value is an alias. Liquibase's parser
+// resolves merges and aliases before Liquibase sees the mapping; this reader walks what is
+// written, so a changeset or a runInTransaction brought in by either would go unseen.
+func plain(key, value *yaml.Node, known []string) error {
+	if key.Tag == "!!merge" || key.Value == "<<" {
+		return fmt.Errorf("%w: line %d merges another mapping in", ErrAmbiguous, key.Line)
+	}
 	for _, k := range known {
 		if key.Value != k && strings.EqualFold(key.Value, k) {
 			return fmt.Errorf("%w: line %d spells %q as %q", ErrAmbiguous, key.Line, k, key.Value)
+		}
+		if key.Value == k && value.Kind == yaml.AliasNode {
+			return fmt.Errorf("%w: line %d takes %q from an alias", ErrAmbiguous, key.Line, k)
 		}
 	}
 	return nil
