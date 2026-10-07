@@ -1,7 +1,8 @@
 # One pipeline ending in "Pipeline Complete", the only required check (estate convention).
-# ONE job: GitHub bills each job rounded up to a full minute, so checks are steps, not jobs.
-# `task check` is everything CI runs, so local and CI cannot drift. Its last step builds the image
-# and drives it against a real Postgres, so the image is built and proven in the same step.
+# Every check is its own job, and they run in parallel: a pull request waits for the slowest
+# check rather than the sum of them, which is worth the extra minutes GitHub bills per job.
+# Each job runs one `task`, the same tasks `task check` runs in sequence, so local and CI
+# cannot drift.
 name: CI
 
 on:
@@ -18,10 +19,15 @@ permissions:
   contents: read
 
 jobs:
-  pipeline-complete:
-    name: Pipeline Complete
+  check:
+    name: Check (${{ matrix.task }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      # Every failure is reported, not only the first.
+      fail-fast: false
+      matrix:
+        task: [lint, test, test:integration, build, secrets]
     steps:
       - uses: actions/checkout@v7
 
@@ -29,5 +35,24 @@ jobs:
         with:
           cache: true
 
-      - name: Check
-        run: mise exec -- task check
+      - name: Run the task
+        env:
+          TASK: ${{ matrix.task }}
+        run: mise exec -- task "$TASK"
+
+  # The one required check: green only when every job above is. `always()` so a failed or
+  # cancelled job still reports here, as a failure, rather than leaving the check pending.
+  pipeline-complete:
+    name: Pipeline Complete
+    if: ${{ always() }}
+    needs: [check]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            [ "$result" = success ] || { echo "a job ended ${result}"; exit 1; }
+          done
