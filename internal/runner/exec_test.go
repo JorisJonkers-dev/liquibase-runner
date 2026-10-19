@@ -31,7 +31,7 @@ func TestExecHandsLiquibaseTheLoginInTheEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "args: --search-path=/a,/b --changelog-file=x.yaml rollback --tag=t\n" +
-		"url: jdbc:postgresql://db:5432/notes_db\nuser: owner\npassword: s3cret\n"
+		"url: jdbc:postgresql://db:5432/notes_db?options=-c%20lock_timeout%3D5s%20-c%20statement_timeout%3D15min\nuser: owner\npassword: s3cret\n"
 	if out.String() != want {
 		t.Fatalf("liquibase saw:\n%s\nwant:\n%s", out.String(), want)
 	}
@@ -55,5 +55,35 @@ func TestExecNamesTheCommandThatFailed(t *testing.T) {
 	err = runner.Exec(binary, &out, &errs)(context.Background(), runner.Database{}, nil, "--only-options")
 	if err == nil || !strings.Contains(err.Error(), "liquibase : exit status 3") {
 		t.Fatalf("error %v", err)
+	}
+}
+
+func TestSquawkExecAnswersNothingForCleanSQL(t *testing.T) {
+	findings, err := runner.SquawkExec(script(t, `exit 0`))(context.Background(), "/tmp/a.sql", nil, false)
+	if err != nil || findings != "" {
+		t.Fatalf("findings %q, err %v", findings, err)
+	}
+}
+
+func TestSquawkExecAnswersItsFindings(t *testing.T) {
+	binary := script(t, `echo "args: $*"; exit 1`)
+	findings, err := runner.SquawkExec(binary)(context.Background(), "/tmp/a.sql", []string{"ban-drop-column", "prefer-robust-stmts"}, true)
+	if err != nil || findings != "args: --reporter=gcc --exclude=ban-drop-column,prefer-robust-stmts --assume-in-transaction /tmp/a.sql\n" {
+		t.Fatalf("findings %q, err %v", findings, err)
+	}
+}
+
+func TestSquawkExecReadsSQLOutsideATransactionWhenTold(t *testing.T) {
+	findings, _ := runner.SquawkExec(script(t, `echo "args: $*"; exit 1`))(context.Background(), "/tmp/a.sql", nil, false)
+	if findings != "args: --reporter=gcc --exclude= /tmp/a.sql\n" {
+		t.Fatalf("findings %q", findings)
+	}
+}
+
+func TestSquawkExecReportsWhatSquawkRefuses(t *testing.T) {
+	binary := script(t, `echo "invalid rule name nonsense" >&2; exit 2`)
+	_, err := runner.SquawkExec(binary)(context.Background(), "/tmp/a.sql", []string{"nonsense"}, true)
+	if err == nil || !strings.Contains(err.Error(), "invalid rule name nonsense") {
+		t.Fatalf("err = %v", err)
 	}
 }

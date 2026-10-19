@@ -132,6 +132,28 @@ func TestCIVerbsSignInWithTheLoginTheWorkflowHands(t *testing.T) {
 	}
 }
 
+func TestCILintLintsTheReleaseUpdateSQLRenders(t *testing.T) {
+	w := newWorld(t)
+	w.env["DATABASE_USERNAME"], w.env["DATABASE_PASSWORD"] = "ci", "ci-pw"
+	w.Liquibase = func(_ context.Context, _ runner.Database, _ []string, args ...string) error {
+		w.ran = append(w.ran, args)
+		out := strings.TrimPrefix(args[1], "--output-file=")
+		return os.WriteFile(out, []byte("-- Changeset changelog.yaml::1::a\nCREATE INDEX i ON t (a);\n"), 0o600)
+	}
+	var linted []string
+	w.Squawk = func(_ context.Context, file string, _ []string, _ bool) (string, error) {
+		linted = append(linted, file)
+		return "", nil
+	}
+
+	if code := w.run("ci", "lint"); code != 0 {
+		t.Fatalf("lint exited %d: %s", code, w.errs.String())
+	}
+	if len(w.ran) != 1 || w.ran[0][2] != "update-sql" || len(linted) != 1 {
+		t.Fatalf("liquibase ran %v, squawk read %v", w.ran, linted)
+	}
+}
+
 func TestCIProofMergesStdinToStdout(t *testing.T) {
 	w := newWorld(t)
 	w.Stdin = strings.NewReader("apiVersion: proof.jorisjonkers.dev/v1\nkind: MigrationProof\nschemaVersion: 1.0.0\napplications:\n  - id: notes\n    nonTransactional: false\n")

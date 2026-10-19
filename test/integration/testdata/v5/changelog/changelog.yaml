@@ -1,0 +1,31 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-notes
+      author: test
+      changes:
+        - createTable:
+            tableName: notes
+            columns:
+              - column: {name: id, type: bigint}
+  - changeSet:
+      id: add-body
+      author: test
+      changes:
+        - addColumn:
+            tableName: notes
+            columns:
+              - column: {name: body, type: text}
+  - changeSet:
+      id: check-timeouts
+      author: test
+      changes:
+        - sql:
+            splitStatements: false
+            sql: >-
+              DO $$ BEGIN
+              IF current_setting('lock_timeout') <> '5s' OR current_setting('statement_timeout') <> '15min' THEN
+              RAISE EXCEPTION 'lock_timeout %, statement_timeout %', current_setting('lock_timeout'), current_setting('statement_timeout');
+              END IF; END $$
+      rollback:
+        - sql:
+            sql: SELECT 1

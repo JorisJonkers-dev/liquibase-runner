@@ -114,7 +114,7 @@ func TestUpAppliesTheChangelogThenTagsTheRevision(t *testing.T) {
 	if got.searchPath[0] != f.ChangelogDir {
 		t.Errorf("search path %v does not start at the image's changelog", got.searchPath)
 	}
-	if got.db.URL() != "jdbc:postgresql://db:5432/notes_db" || got.db.Username != "owner" {
+	if got.db.URL() != "jdbc:postgresql://db:5432/notes_db?options=-c%20lock_timeout%3D5s%20-c%20statement_timeout%3D15min" || got.db.Username != "owner" {
 		t.Errorf("database %+v", got.db)
 	}
 	for _, want := range []string{"file: changelog.yaml", "id: " + first, "tag: " + first} {

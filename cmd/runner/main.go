@@ -15,7 +15,10 @@ import (
 	"github.com/JorisJonkers-dev/liquibase-runner/internal/store"
 )
 
-const liquibase = "/liquibase/liquibase"
+const (
+	liquibase = "/liquibase/liquibase"
+	squawk    = "/usr/local/bin/squawk"
+)
 
 func main() {
 	os.Exit(run())
@@ -36,5 +39,6 @@ func run() int {
 			return store.Open(ctx, db.Host, db.Port, db.Name, db.Username, db.Password)
 		},
 		Liquibase: runner.Exec(liquibase, os.Stdout, os.Stderr),
+		Squawk:    runner.SquawkExec(squawk),
 	})
 }

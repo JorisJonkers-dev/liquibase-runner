@@ -25,6 +25,7 @@ const usage = `usage:
   runner ci up <tag>               up, signed in from DATABASE_USERNAME and DATABASE_PASSWORD
   runner ci reversibility          apply, roll back and apply again every changeset not yet run
   runner ci non-transactional      print whether the release is one non-transactional changeset
+  runner ci lint                   lint the SQL of every changeset not yet run for long locks and lost data
   runner ci proof --application <id> [--tested-against sha256:...] --non-transactional=<bool>
                                    merge an entry into the Migration Proof on stdin, to stdout
 
@@ -62,6 +63,7 @@ type World struct {
 	HTTP      *http.Client
 	Open      func(ctx context.Context, db runner.Database) (runner.Store, error)
 	Liquibase runner.Liquibase
+	Squawk    runner.Squawk
 }
 
 var errUsage = errors.New("usage")
@@ -126,6 +128,8 @@ func ci(ctx context.Context, args []string, w World) error {
 		return r.Up(ctx, tag)
 	case "reversibility":
 		return r.Reversibility(ctx)
+	case "lint":
+		return r.Lint(ctx)
 	case "non-transactional":
 		alone, err := r.NonTransactional(ctx)
 		if err != nil {
@@ -217,6 +221,7 @@ func base(w World, alsoRequired ...string) (runner.Runner, error) {
 		},
 		Open:      w.Open,
 		Liquibase: w.Liquibase,
+		Squawk:    w.Squawk,
 		Log:       w.Stderr,
 	}, nil
 }

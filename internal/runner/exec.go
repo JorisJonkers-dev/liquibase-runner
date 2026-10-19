@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -37,4 +38,28 @@ func commandOf(args []string) string {
 		}
 	}
 	return ""
+}
+
+// SquawkExec is the squawk the image carries, at binary. It exits 1 with its findings on stdout,
+// and anything else it reports, such as a rule it does not know, is an error.
+func SquawkExec(binary string) Squawk {
+	return func(ctx context.Context, file string, exclude []string, inTransaction bool) (string, error) {
+		argv := []string{"--reporter=gcc", "--exclude=" + strings.Join(exclude, ",")}
+		if inTransaction {
+			argv = append(argv, "--assume-in-transaction")
+		}
+		var out, errs strings.Builder
+		cmd := exec.CommandContext(ctx, binary, append(argv, file)...) //nolint:gosec // the image's own squawk, with arguments the runner built.
+		cmd.Stdout, cmd.Stderr = &out, &errs
+		err := cmd.Run()
+		var exit *exec.ExitError
+		switch {
+		case err == nil:
+			return "", nil
+		case errors.As(err, &exit) && exit.ExitCode() == 1:
+			return out.String(), nil
+		default:
+			return "", fmt.Errorf("squawk: %w: %s", err, strings.TrimSpace(errs.String()))
+		}
+	}
 }

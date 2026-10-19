@@ -2,9 +2,11 @@
 # Proves a migration image's changelog against a throwaway Postgres, then writes the proof.
 #   1. the serving revision's migration image brings the database to what serves today
 #   2. a non-transactional changeset stands alone in the release
-#   3. every changeset of the release applies, rolls back and applies again
-#   4. the serving revision's own test suite passes against the migrated database
-# A first release, with nothing serving, skips 1 and 4 and records no testedAgainst.
+#   3. every changeset of the release renders to SQL that takes no long lock and destroys no data,
+#      or says in its comment which rule it breaks and why
+#   4. every changeset of the release applies, rolls back and applies again
+#   5. the serving revision's own test suite passes against the migrated database
+# A first release, with nothing serving, skips 1 and 5 and records no testedAgainst.
 set -euo pipefail
 
 : "${IMAGE:?}" "${APPLICATION:?}" "${DATABASE_NAME:?}" "${PROOF_FILE:?}"
@@ -71,6 +73,11 @@ case "$non_transactional" in
   *) fail "the image answered the non-transactional check with something that is neither true nor false" ;;
 esac
 echo "nonTransactional: $non_transactional"
+echo "::endgroup::"
+
+# Before reversibility applies the release: update-sql renders only what the database lacks.
+echo "::group::Lock-safe SQL"
+runner "$IMAGE" ci lint </dev/null
 echo "::endgroup::"
 
 echo "::group::Reversibility"
