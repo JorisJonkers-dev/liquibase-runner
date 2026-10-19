@@ -24,9 +24,14 @@ type Database struct {
 	Password string
 }
 
+// timeouts make every statement Liquibase runs give up instead of stalling: a lock it cannot
+// take within 5 seconds, or work that outlasts 15 minutes, fails the migration (deploy-kit ADR
+// 0108). They ride on the connection, so no changelog can forget them.
+const timeouts = "options=-c%20lock_timeout%3D5s%20-c%20statement_timeout%3D15min"
+
 // URL is the JDBC address Liquibase connects to.
 func (d Database) URL() string {
-	return fmt.Sprintf("jdbc:postgresql://%s:%s/%s", d.Host, d.Port, d.Name)
+	return fmt.Sprintf("jdbc:postgresql://%s:%s/%s?%s", d.Host, d.Port, d.Name, timeouts)
 }
 
 // Store is what the runner asks the database directly.
@@ -53,6 +58,7 @@ type Runner struct {
 	Database  Database
 	Open      func(ctx context.Context, db Database) (Store, error)
 	Liquibase Liquibase
+	Squawk    Squawk
 	Log       io.Writer
 }
 

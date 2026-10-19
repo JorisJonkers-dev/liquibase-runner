@@ -21,7 +21,12 @@ type ChangeSet struct {
 	// Reruns is set for a changeset Liquibase runs again although the database holds it:
 	// one marked runAlways or runOnChange is part of every release.
 	Reruns bool
+	// Comment is the changeset's own comment, where it excuses itself from a lint rule.
+	Comment string
 }
+
+// Key is how Liquibase names the changeset in DATABASECHANGELOG and in update-sql's output.
+func (c ChangeSet) Key() string { return c.File + "::" + c.ID + "::" + c.Author }
 
 // ErrNotYAML is returned for a changelog the checks cannot read. The estate has one migration
 // format, so a changelog in another one is refused instead of being passed unchecked.
@@ -42,6 +47,7 @@ type changeSet struct {
 	RunInTransaction *bool     `yaml:"runInTransaction"`
 	RunAlways        bool      `yaml:"runAlways"`
 	RunOnChange      bool      `yaml:"runOnChange"`
+	Comment          string    `yaml:"comment"`
 }
 
 type include struct {
@@ -57,9 +63,9 @@ type includeAll struct {
 // The keys this reader acts on. A key that differs from one of them only by case is refused:
 // whether Liquibase honours it is not something the checks may guess.
 var (
-	entryKeys     = []string{"changeSet", "include", "includeAll", "logicalFilePath"}                           //nolint:gochecknoglobals // a constant list.
-	changeSetKeys = []string{"id", "author", "logicalFilePath", "runInTransaction", "runAlways", "runOnChange"} //nolint:gochecknoglobals // a constant list.
-	includeKeys   = []string{"file", "path", "relativeToChangelogFile"}                                         //nolint:gochecknoglobals // a constant list.
+	entryKeys     = []string{"changeSet", "include", "includeAll", "logicalFilePath"}                                      //nolint:gochecknoglobals // a constant list.
+	changeSetKeys = []string{"id", "author", "logicalFilePath", "runInTransaction", "runAlways", "runOnChange", "comment"} //nolint:gochecknoglobals // a constant list.
+	includeKeys   = []string{"file", "path", "relativeToChangelogFile"}                                                    //nolint:gochecknoglobals // a constant list.
 )
 
 // Read returns every changeset of the changelog at file, in the order Liquibase runs them,
@@ -151,6 +157,7 @@ func (r *reader) changeSet(node *yaml.Node) error {
 		File:             file,
 		NonTransactional: c.RunInTransaction != nil && !*c.RunInTransaction,
 		Reruns:           c.RunAlways || c.RunOnChange,
+		Comment:          c.Comment,
 	})
 	return nil
 }

@@ -27,7 +27,7 @@ func build(t *testing.T) {
 	t.Helper()
 	images.Do(func() {
 		mustDocker(t, "build", "-q", "-t", image, "../..")
-		for _, version := range []string{"v1", "v2", "v3"} {
+		for _, version := range []string{"v1", "v2", "v3", "v4", "v5"} {
 			mustDocker(t, "build", "-q", "-t", image+"-"+version, "-f", "testdata/Dockerfile", filepath.Join("testdata", version))
 		}
 	})
@@ -289,6 +289,31 @@ func TestTheImage(t *testing.T) {
 			t.Fatalf("nonTransactional %q", got)
 		}
 		e.must("v3", e.ci("ci_db"), "ci", "reversibility")
+	})
+
+	t.Run("ci: a release that builds its index concurrently passes the lint", func(t *testing.T) {
+		e.t = t
+		e.query(database, `create database ci_lint`)
+		e.must("v2", e.ci("ci_lint"), "ci", "up", first)
+		e.must("v3", e.ci("ci_lint"), "ci", "lint")
+	})
+
+	t.Run("ci: the lint refuses a release that locks a table, and skips what a changeset allows", func(t *testing.T) {
+		e.t = t
+		out, err := e.run("v4", e.ci("ci_lint"), "ci", "lint")
+		if err == nil || !strings.Contains(out, "changelog.yaml::index-id::test") || !strings.Contains(out, "require-concurrent-index-creation") {
+			t.Fatalf("error %v\n%s", err, out)
+		}
+		if strings.Contains(out, "drop-body") || strings.Contains(out, "ban-drop-column") {
+			t.Fatalf("the allowed drop was reported:\n%s", out)
+		}
+	})
+
+	t.Run("every migration runs with a lock timeout and a statement timeout", func(t *testing.T) {
+		e.t = t
+		e.query(database, `create database timeouts_db`)
+		e.must("v5", e.ci("timeouts_db"), "ci", "up", first)
+		e.expect("timeouts_db", `select count(*) from databasechangelog where id = 'check-timeouts'`, "1")
 	})
 
 	t.Run("ci: a non-transactional changeset that shares its release is refused", func(t *testing.T) {

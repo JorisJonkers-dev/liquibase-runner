@@ -24,8 +24,8 @@ identifies a changeset by its id, its author and this name:
 ENV CHANGELOG_FILE=db/changelog/db.changelog-master.yaml
 ```
 
-Changelogs are YAML, the estate's one migration format. The image carries Liquibase and the
-PostgreSQL driver and nothing else an application needs to add.
+Changelogs are YAML, the estate's one migration format. The image carries Liquibase, the
+PostgreSQL driver and `squawk`, and nothing else an application needs to add.
 
 ## In the cluster
 
@@ -64,12 +64,17 @@ killed. The runner clears it, says so, and carries on. A younger lock is left al
 Liquibase waits for it as usual. An image may set `LOCK_STALE_AFTER` (a Go duration) when the
 platform's deadline is longer.
 
+**Every migration gives up instead of stalling.** Liquibase connects with a `lock_timeout` of
+5 seconds and a `statement_timeout` of 15 minutes. A changeset that meets a lock it cannot take
+fails the migration rather than queueing every later query behind it. One that needs longer
+sets its own `statement_timeout` first.
+
 **The root filesystem can be read-only.** The runner writes one file, its own changelog, under
 `/tmp`, which must be writable.
 
 ## In CI
 
-The Migration Proof action runs the three migration-safety obligations against a throwaway
+The Migration Proof action runs the four migration-safety obligations against a throwaway
 Postgres and writes `migration-proof.yml`. Run it after building the migration image and before
 publishing the fragment:
 
@@ -90,10 +95,26 @@ publishing the fragment:
 | obligation | how it is run |
 |---|---|
 | a non-transactional changeset stands alone | `ci non-transactional`: the changesets the serving schema does not hold are the release; one marked `runInTransaction: false` must be the only one |
+| lock-safe SQL | `ci lint`: each changeset of the release rendered by Liquibase `update-sql` against the serving schema, and linted by `squawk` for long locks and lost data |
 | reversibility | `ci reversibility`: Liquibase `update-testing-rollback` over the release |
 | serving-version compatibility | `test-command`, the serving revision's own suite, against the database the new changelog has just migrated; it finds the database in `DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USERNAME` and `DATABASE_PASSWORD` |
 
-The proof is written only when all three hold. `ci proof` replaces the Application's entry and
+A changeset that breaks a lint rule on purpose, such as a contract step that drops a column the
+serving version no longer reads, says so in its `comment`:
+
+```yaml
+- changeSet:
+    id: drop-legacy-name
+    author: auth
+    comment: "lint-allow ban-drop-column: 3.4 stopped reading legacy_name"
+```
+
+The lint skips those rules for that changeset alone. A `lint-allow` line without a reason, or
+naming a rule `squawk` does not know, fails the lint. It always leaves out the rules the runner
+meets itself (`prefer-robust-stmts` and the timeout rules) and the type preferences, which say
+nothing about locks or data.
+
+The proof is written only when all four hold. `ci proof` replaces the Application's entry and
 keeps the others, ordered by id, so a proof that says the same thing is the same bytes.
 
 The `ci` commands sign in with `DATABASE_USERNAME` and `DATABASE_PASSWORD`. `up` and `down`

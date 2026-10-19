@@ -1,0 +1,34 @@
+databaseChangeLog:
+  - changeSet:
+      id: create-notes
+      author: test
+      changes:
+        - createTable:
+            tableName: notes
+            columns:
+              - column: {name: id, type: bigint}
+  - changeSet:
+      id: add-body
+      author: test
+      changes:
+        - addColumn:
+            tableName: notes
+            columns:
+              - column: {name: body, type: text}
+  - changeSet:
+      id: drop-body
+      author: test
+      comment: "lint-allow ban-drop-column: the serving version stopped reading body"
+      changes:
+        - dropColumn:
+            tableName: notes
+            columnName: body
+  - changeSet:
+      id: index-id
+      author: test
+      changes:
+        - createIndex:
+            tableName: notes
+            indexName: notes_id
+            columns:
+              - column: {name: id}

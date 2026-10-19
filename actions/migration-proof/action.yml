@@ -1,4 +1,4 @@
-# The three migration-safety obligations an application's CI owes before it publishes a
+# The four migration-safety obligations an application's CI owes before it publishes a
 # fragment (deploy-kit, spec/v1/55-delivery.md#migration-safety), and the Migration Proof that
 # records them. Run it after building the migration image, before publishing the fragment.
 name: Migration Proof
