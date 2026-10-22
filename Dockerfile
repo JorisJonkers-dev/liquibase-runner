@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.10
+# syntax=docker/dockerfile:1.28
 # The platform's migration runner. An application's migration image is built FROM this one and
 # adds only its changelog:
 #
