@@ -21,7 +21,7 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # squawk lints each changeset's SQL for long locks and lost data (`runner ci lint`). Its static
 # binary for the target architecture, pinned by checksum: a new version is a new pair of checksums.
-FROM --platform=$BUILDPLATFORM alpine:3.22 AS squawk
+FROM --platform=$BUILDPLATFORM alpine:3.24 AS squawk
 ARG TARGETARCH
 ARG SQUAWK_VERSION=2.66.0
 ARG SQUAWK_SHA256_AMD64=e403ec140fbd15d653763ed0e271a76ae512ad6f523f1b3168f134fdfe92c1dd
