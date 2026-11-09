@@ -39,14 +39,26 @@ RUN case "$TARGETARCH" in \
     && echo "${sum}  /squawk" | sha256sum -c - \
     && chmod 0755 /squawk
 
-FROM liquibase/liquibase:5.0.4@sha256:060f96efff4811ccf03957ff3160f21ea04139b89940640f8ad54a065cdc6906
-# Liquibase 5 ships no database driver. This is the one the estate's databases need, pinned by
-# checksum because it is fetched at build time: a new version is a new checksum, set together.
+# The JDBC driver for the estate's databases, fetched through the package proxy when the build
+# has the packages-netrc secret, and straight from Maven Central otherwise (a plain local build).
+# Liquibase 5 ships no driver. It is pinned by checksum either way: a new version is a new
+# checksum, set together.
+FROM --platform=$BUILDPLATFORM alpine:3.24 AS jdbc
 ARG POSTGRESQL_JDBC_VERSION=42.7.13
 ARG POSTGRESQL_JDBC_SHA256=6e0e4cc2d8cae902084f8a2b18728b073a6fd9d1f87c9d8bff8f298c18185b93
-ADD --checksum=sha256:${POSTGRESQL_JDBC_SHA256} --chown=liquibase:liquibase \
-    https://repo1.maven.org/maven2/org/postgresql/postgresql/${POSTGRESQL_JDBC_VERSION}/postgresql-${POSTGRESQL_JDBC_VERSION}.jar \
-    /liquibase/lib/postgresql.jar
+RUN apk add --no-cache curl
+RUN --mount=type=secret,id=packages-netrc,target=/run/secrets/packages-netrc,required=false \
+    set -eu; \
+    path="org/postgresql/postgresql/${POSTGRESQL_JDBC_VERSION}/postgresql-${POSTGRESQL_JDBC_VERSION}.jar"; \
+    if [ -s /run/secrets/packages-netrc ]; then \
+      curl -fsSL --retry 3 --netrc-file /run/secrets/packages-netrc -o /postgresql.jar "https://packages.jorisjonkers.dev/maven/${path}"; \
+    else \
+      curl -fsSL --retry 3 -o /postgresql.jar "https://repo1.maven.org/maven2/${path}"; \
+    fi; \
+    echo "${POSTGRESQL_JDBC_SHA256}  /postgresql.jar" | sha256sum -c -
+
+FROM liquibase/liquibase:5.0.4@sha256:060f96efff4811ccf03957ff3160f21ea04139b89940640f8ad54a065cdc6906
+COPY --from=jdbc --chown=liquibase:liquibase /postgresql.jar /liquibase/lib/postgresql.jar
 COPY --from=build /out/runner /usr/local/bin/runner
 COPY --from=squawk /squawk /usr/local/bin/squawk
 
