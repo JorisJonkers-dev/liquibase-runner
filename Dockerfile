@@ -10,13 +10,17 @@
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+ARG GOPROXY
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=secret,id=packages-netrc,target=/run/secrets/packages-netrc,required=false \
+    NETRC=/run/secrets/packages-netrc go mod download
 COPY . .
 ARG TARGETOS
 ARG TARGETARCH
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    --mount=type=secret,id=packages-netrc,target=/run/secrets/packages-netrc,required=false \
+    NETRC=/run/secrets/packages-netrc CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags "-s -w" -o /out/runner ./cmd/runner
 
 # squawk lints each changeset's SQL for long locks and lost data (`runner ci lint`). Its static
