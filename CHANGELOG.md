@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/JorisJonkers-dev/liquibase-runner/compare/v0.2.0...v0.2.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/jackc/pgx/v5 to v5.12.0 ([#27](https://github.com/JorisJonkers-dev/liquibase-runner/issues/27)) ([2aeb1d2](https://github.com/JorisJonkers-dev/liquibase-runner/commit/2aeb1d20d2bf427b5429230abc8e9094898a4d72))
+
 ## [0.2.0](https://github.com/JorisJonkers-dev/liquibase-runner/compare/v0.1.0...v0.2.0) (2026-10-19)
 
 
