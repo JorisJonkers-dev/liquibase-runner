@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/JorisJonkers-dev/liquibase-runner/compare/v0.2.1...v0.2.2) (2026-11-12)
+
+
+### Bug Fixes
+
+* **hygiene:** never cancel a run of the required hygiene checks ([#40](https://github.com/JorisJonkers-dev/liquibase-runner/issues/40)) ([4f27f1f](https://github.com/JorisJonkers-dev/liquibase-runner/commit/4f27f1f7217d94cd16383a3c8b7aa22d9e0f0e8b))
+
 ## [0.2.1](https://github.com/JorisJonkers-dev/liquibase-runner/compare/v0.2.0...v0.2.1) (2026-11-10)
 
 
