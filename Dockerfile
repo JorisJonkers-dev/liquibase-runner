@@ -46,7 +46,15 @@ RUN case "$TARGETARCH" in \
 FROM --platform=$BUILDPLATFORM alpine:3.24 AS jdbc
 ARG POSTGRESQL_JDBC_VERSION=42.7.13
 ARG POSTGRESQL_JDBC_SHA256=6e0e4cc2d8cae902084f8a2b18728b073a6fd9d1f87c9d8bff8f298c18185b93
-RUN apk add --no-cache curl
+# apk installs through the package proxy when the build has its packages-netrc secret (CI); without it, from Alpine's own mirrors.
+RUN --mount=type=secret,id=packages-netrc,target=/root/.netrc,required=false \
+    set -e; \
+    repos=""; \
+    if [ -s /root/.netrc ]; then \
+      v=$(cut -d. -f1,2 /etc/alpine-release); \
+      repos="--repositories-file /dev/null --repository https://packages.jorisjonkers.dev/apk/alpine/v$v/main --repository https://packages.jorisjonkers.dev/apk/alpine/v$v/community"; \
+    fi; \
+    apk add --no-cache $repos curl
 RUN --mount=type=secret,id=packages-netrc,target=/run/secrets/packages-netrc,required=false \
     set -eu; \
     path="org/postgresql/postgresql/${POSTGRESQL_JDBC_VERSION}/postgresql-${POSTGRESQL_JDBC_VERSION}.jar"; \
