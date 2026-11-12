@@ -16,7 +16,7 @@ permissions: {}
 jobs:
   publish-image:
     if: startsWith(github.ref, 'refs/tags/v')
-    uses: JorisJonkers-dev/github-workflows/.github/workflows/container-publish.yml@8aaf024208bf4b29acb468aecd3cd7ee130d5ac1 # v0.49.1
+    uses: JorisJonkers-dev/github-workflows/.github/workflows/container-publish.yml@48fcba8b143567e12716f4b77b9a3ab211719ffd # v0.50.1
     with:
       image-name: liquibase-runner
       version: ${{ github.ref_name }}
