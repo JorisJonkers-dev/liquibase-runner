@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/JorisJonkers-dev/liquibase-runner/compare/v0.2.2...v0.2.3) (2026-11-20)
+
+
+### Bug Fixes
+
+* **deps:** update minor and patch dependencies ([#46](https://github.com/JorisJonkers-dev/liquibase-runner/issues/46)) ([6f1a561](https://github.com/JorisJonkers-dev/liquibase-runner/commit/6f1a5613cd65137aa2ca2d2d33519e4bd6010af4))
+
 ## [0.2.2](https://github.com/JorisJonkers-dev/liquibase-runner/compare/v0.2.1...v0.2.2) (2026-11-12)
 
 
